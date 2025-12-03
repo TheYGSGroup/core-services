@@ -1,0 +1,46 @@
+{
+    "name": "ygs/core-services",
+    "description": "Gregory Scott Core Services - WordPress-style hooks and plugin management system",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Gregory Scott",
+            "email": "dev@gregoryscottdev.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0",
+        "illuminate/console": "^11.0",
+        "illuminate/database": "^11.0",
+        "illuminate/filesystem": "^11.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0",
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ygs\\CoreServices\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ygs\\CoreServices\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Ygs\\CoreServices\\CoreServicesServiceProvider"
+            ],
+            "aliases": {
+                "HookManager": "Ygs\\CoreServices\\Facades\\HookManager"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
+
