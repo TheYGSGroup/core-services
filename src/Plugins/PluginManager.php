@@ -214,16 +214,23 @@ class PluginManager
                 // Try to find and require the file directly
                 $parts = explode('\\', $mainClass);
                 $className = array_pop($parts);
-                $pluginFile = $pluginPath . '/src/' . $className . '.php';
+                $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
                 
-                if (File::exists($pluginFile)) {
+                // Use file_exists() instead of File::exists() for direct file system check
+                if (file_exists($pluginFile)) {
                     require_once $pluginFile;
+                } else {
+                    // Try alternative path structure
+                    $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . $className . '.php';
+                    if (file_exists($pluginFile)) {
+                        require_once $pluginFile;
+                    }
                 }
                 
                 // Check again after direct require
                 if (!class_exists($mainClass)) {
                     File::deleteDirectory($pluginPath);
-                    throw new \Exception("Plugin class {$mainClass} not found. Expected file: {$pluginFile}");
+                    throw new \Exception("Plugin class {$mainClass} not found. Checked: {$pluginPath}/src/{$className}.php");
                 }
             }
         }
