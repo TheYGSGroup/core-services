@@ -12,6 +12,7 @@ class PanelExtensionHooks
 {
     const HOOK_PAGES = 'panel.extension.pages';
     const HOOK_RESOURCES = 'panel.extension.resources';
+    const HOOK_NAVIGATION_GROUPS = 'panel.navigation.groups';
 
     /**
      * Add pages to the Lunar Panel
@@ -38,6 +39,18 @@ class PanelExtensionHooks
     }
 
     /**
+     * Add navigation groups to the Lunar Panel
+     *
+     * @param callable $callback Callback that receives existing groups array and returns modified array
+     * @param int $priority Priority of the filter (lower numbers = higher priority, default 10)
+     * @return void
+     */
+    public static function addNavigationGroups(callable $callback, int $priority = 10): void
+    {
+        HookManager::addFilter(self::HOOK_NAVIGATION_GROUPS, $callback, $priority);
+    }
+
+    /**
      * Get pages with all extensions applied
      *
      * @param array $existingPages Initial pages array
@@ -57,6 +70,17 @@ class PanelExtensionHooks
     public static function getResources(array $existingResources): array
     {
         return HookManager::applyFilter(self::HOOK_RESOURCES, $existingResources);
+    }
+
+    /**
+     * Get navigation groups with all extensions applied
+     *
+     * @param array $existingGroups Initial navigation groups array
+     * @return array Modified navigation groups array (sorted with priority/order)
+     */
+    public static function getNavigationGroups(array $existingGroups): array
+    {
+        return HookManager::applyFilter(self::HOOK_NAVIGATION_GROUPS, $existingGroups);
     }
 }
 

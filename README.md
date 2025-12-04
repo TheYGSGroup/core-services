@@ -82,9 +82,167 @@ PanelExtensionHooks::addResources(function($resources) {
     return $resources;
 });
 
+// Add navigation groups
+PanelExtensionHooks::addNavigationGroups(function($groups) {
+    $groups[] = 'My Custom Group';
+    // Or reorder existing groups
+    // Move 'Settings' to the end
+    $groups = array_diff($groups, ['Settings']);
+    $groups[] = 'Settings';
+    return $groups;
+});
+
 // In your PanelExtensionServiceProvider
 $pages = PanelExtensionHooks::getPages($existingPages);
 $resources = PanelExtensionHooks::getResources($existingResources);
+$groups = PanelExtensionHooks::getNavigationGroups($existingGroups);
+```
+
+### Navigation Groups
+
+Navigation groups can be modified via hooks. Groups are ordered by their position in the array (first = top of menu):
+
+```php
+// Add a new group
+PanelExtensionHooks::addNavigationGroups(function($groups) {
+    // Add new group at the end
+    $groups[] = 'My Plugin Group';
+    return $groups;
+});
+
+// Reorder groups (e.g., move 'Settings' to the top)
+PanelExtensionHooks::addNavigationGroups(function($groups) {
+    // Remove from current position
+    $groups = array_values(array_diff($groups, ['Settings']));
+    // Add at the beginning
+    array_unshift($groups, 'Settings');
+    return $groups;
+}, 5); // Priority 5 = higher priority, executes earlier
+```
+
+## Plugin Management System
+
+The plugin management system allows you to install, activate, and manage plugins via ZIP files.
+
+### Installation
+
+Run the migration to create the plugins table:
+
+```bash
+php artisan migrate
+```
+
+### Artisan Commands
+
+```bash
+# Install a plugin from a ZIP file
+php artisan plugin:install /path/to/plugin.zip
+
+# Activate a plugin
+php artisan plugin:activate plugin-name
+
+# Deactivate a plugin
+php artisan plugin:deactivate plugin-name
+
+# List all installed plugins
+php artisan plugin:list
+```
+
+### Plugin Structure
+
+Plugins must be packaged as ZIP files with the following structure:
+
+```
+plugin-name.zip
+├── plugin.json          # Required: Plugin metadata
+├── src/
+│   ├── Plugin.php       # Required: Main plugin class (implements PluginInterface)
+│   └── ServiceProvider.php  # Optional: Plugin service provider
+├── database/
+│   └── migrations/      # Optional: Plugin migrations
+└── ...
+```
+
+### plugin.json Schema
+
+```json
+{
+    "name": "plugin-slug",
+    "title": "Plugin Display Name",
+    "version": "1.0.0",
+    "description": "Plugin description",
+    "author": "Author Name",
+    "main_class": "Namespace\\Plugin",
+    "service_provider": "Namespace\\ServiceProvider",
+    "requires": {
+        "php": ">=8.2",
+        "laravel": ">=11.0",
+        "core": ">=1.0.0"
+    }
+}
+```
+
+### Creating a Plugin
+
+1. Extend `BasePlugin` or implement `PluginInterface`:
+
+```php
+<?php
+
+namespace MyPlugin;
+
+use Ygs\CoreServices\Plugins\BasePlugin;
+
+class Plugin extends BasePlugin
+{
+    public function activate(): void
+    {
+        // Plugin activation logic
+        // Register hooks, create database tables, etc.
+    }
+
+    public function deactivate(): void
+    {
+        // Plugin deactivation logic
+        // Clean up temporary data, etc.
+    }
+}
+```
+
+2. Register hooks in your plugin's service provider:
+
+```php
+<?php
+
+namespace MyPlugin;
+
+use Illuminate\Support\ServiceProvider;
+use Ygs\CoreServices\Facades\HookManager;
+
+class ServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        // Register payment gateway
+        HookManager::addAction('payment.gateways.register', function($gateways) {
+            $gateways[] = MyPaymentGateway::class;
+            return $gateways;
+        });
+
+        // Register shipping modifier
+        HookManager::addAction('shipping.modifiers.register', function($modifiers) {
+            $modifiers->add(MyShippingModifier::class);
+        });
+    }
+}
+```
+
+3. Package as ZIP and install:
+
+```bash
+zip -r my-plugin.zip .
+php artisan plugin:install my-plugin.zip
+php artisan plugin:activate my-plugin
 ```
 
 ## Migration from CheckoutEventService
@@ -130,4 +288,3 @@ class CheckoutEventService
 ## License
 
 MIT
-

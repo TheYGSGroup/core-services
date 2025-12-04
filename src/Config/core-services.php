@@ -70,5 +70,15 @@ return [
         */
         'auto_discover' => env('CORE_SERVICES_PLUGIN_AUTO_DISCOVER', true),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Plugin Path (Alias)
+    |--------------------------------------------------------------------------
+    |
+    | Convenience alias for the plugin path.
+    |
+    */
+    'plugins_path' => env('PLUGINS_PATH', base_path('plugins')),
 ];
 
