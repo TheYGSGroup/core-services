@@ -51,12 +51,15 @@ class CoreServicesServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Auto-load migrations from the package (runs automatically with artisan migrate)
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+
         // Publish configuration file
         $this->publishes([
             __DIR__ . '/Config/core-services.php' => config_path('core-services.php'),
         ], 'core-services-config');
 
-        // Publish migrations
+        // Publish migrations (optional - for customization)
         $this->publishes([
             __DIR__ . '/../database/migrations' => database_path('migrations'),
         ], 'core-services-migrations');
