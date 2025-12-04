@@ -195,7 +195,16 @@ class PluginManager
         if (File::isDirectory($pluginPath)) {
             File::deleteDirectory($pluginPath);
         }
-        File::moveDirectory($tempPath, $pluginPath);
+        
+        if (!File::moveDirectory($tempPath, $pluginPath)) {
+            File::deleteDirectory($tempPath);
+            throw new \Exception("Failed to move plugin files to {$pluginPath}");
+        }
+        
+        // Verify the move succeeded
+        if (!File::isDirectory($pluginPath)) {
+            throw new \Exception("Plugin directory was not created at {$pluginPath}");
+        }
 
         // Check dependencies
         if (!$this->satisfiesRequirements($metadata)) {
@@ -229,8 +238,12 @@ class PluginManager
                 
                 // Check again after direct require
                 if (!class_exists($mainClass)) {
+                    // Debug: Check if file actually exists
+                    $actualFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+                    $fileExists = file_exists($actualFile);
+                    $dirExists = is_dir($pluginPath . DIRECTORY_SEPARATOR . 'src');
                     File::deleteDirectory($pluginPath);
-                    throw new \Exception("Plugin class {$mainClass} not found. Checked: {$pluginPath}/src/{$className}.php");
+                    throw new \Exception("Plugin class {$mainClass} not found. File exists: " . ($fileExists ? 'YES' : 'NO') . ", Dir exists: " . ($dirExists ? 'YES' : 'NO') . ", Path: {$actualFile}");
                 }
             }
         }
