@@ -205,13 +205,26 @@ class PluginManager
 
         // Create plugin instance to verify it can be loaded
         $mainClass = $metadata['main_class'] ?? '';
-        if ($mainClass && !class_exists($mainClass)) {
-            // Try to autoload from plugin directory
+        if ($mainClass) {
+            // Register autoloader first
             $this->registerPluginAutoloader($pluginName, $pluginPath);
             
+            // Try to load the class - check if file exists and require it directly if autoloader fails
             if (!class_exists($mainClass)) {
-                File::deleteDirectory($pluginPath);
-                throw new \Exception("Plugin class {$mainClass} not found");
+                // Try to find and require the file directly
+                $parts = explode('\\', $mainClass);
+                $className = array_pop($parts);
+                $pluginFile = $pluginPath . '/src/' . $className . '.php';
+                
+                if (File::exists($pluginFile)) {
+                    require_once $pluginFile;
+                }
+                
+                // Check again after direct require
+                if (!class_exists($mainClass)) {
+                    File::deleteDirectory($pluginPath);
+                    throw new \Exception("Plugin class {$mainClass} not found. Expected file: {$pluginFile}");
+                }
             }
         }
 
