@@ -535,14 +535,16 @@ class PluginManager
 
         // Also register src/ directory as fallback
         // This handles plugins without composer.json
+        // For plugins like AuthNetPayment\Plugin in src/Plugin.php
         $srcPath = $pluginPath . '/src';
         if (File::isDirectory($srcPath)) {
-            spl_autoload_register(function ($class) use ($srcPath) {
+            spl_autoload_register(function ($class) use ($srcPath, $pluginName) {
                 // Extract class name from fully qualified name
                 $parts = explode('\\', $class);
                 $className = array_pop($parts);
                 
                 // Try direct class name first (e.g., src/Plugin.php for AuthNetPayment\Plugin)
+                // This is the most common pattern for simple plugins
                 $file = $srcPath . '/' . $className . '.php';
                 if (file_exists($file)) {
                     require_once $file;
@@ -562,9 +564,10 @@ class PluginManager
                     $file = $srcPath . '/' . $namespacePath . '/' . $className . '.php';
                     if (file_exists($file)) {
                         require_once $file;
+                        return;
                     }
                 }
-            });
+            }, false, true); // Prepend to autoloader stack for priority
         }
     }
 }
