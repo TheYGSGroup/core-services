@@ -140,7 +140,14 @@ class Plugin
                 throw new \Exception("Plugin class {$this->mainClass} not found");
             }
 
-            $this->instance = new $this->mainClass($this->rootPath, $this->metadata);
+            $instance = new $this->mainClass($this->rootPath, $this->metadata);
+            
+            // Type check - ensure it implements PluginInterface
+            if (!$instance instanceof PluginInterface) {
+                throw new \Exception("Plugin class {$this->mainClass} must implement " . PluginInterface::class);
+            }
+            
+            $this->instance = $instance;
         }
 
         return $this->instance;
