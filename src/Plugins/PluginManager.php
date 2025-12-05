@@ -600,7 +600,7 @@ class PluginManager
                         return;
                     }
                 }
-            }, false, true); // Prepend to autoloader stack for priority
+            }, true); // Prepend to autoloader stack for priority ($throw = true, $prepend = true)
         }
     }
 }
