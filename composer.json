@@ -3,7 +3,7 @@
     "description": "Gregory Scott Core Services - WordPress-style hooks and plugin management system",
     "type": "library",
     "license": "MIT",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "authors": [
         {
             "name": "Gregory Scott",

@@ -2,6 +2,8 @@
 
 namespace Ygs\CoreServices\Plugins;
 
+use Ygs\CoreServices\Plugins\Contracts\PluginInterface;
+
 /**
  * Plugin Model
  * 
