@@ -97,7 +97,7 @@ class CoreServicesServiceProvider extends ServiceProvider
                     $pluginMetadata = $plugin->metadata ?? [];
                     $mainClass = $pluginMetadata['main_class'] ?? null;
                     
-                    if ($mainClass && !class_exists($mainClass, false)) {
+                    if ($mainClass && !class_exists($mainClass)) {
                         // Try to find and require the file directly
                         $parts = explode('\\', $mainClass);
                         $className = array_pop($parts);
@@ -112,13 +112,22 @@ class CoreServicesServiceProvider extends ServiceProvider
                                 require_once $pluginFile;
                             }
                         }
+                        
+                        // Check again after direct require
+                        if (!class_exists($mainClass)) {
+                            \Log::error("Plugin class still not found after direct require: {$mainClass}", [
+                                'plugin_path' => $plugin->rootPath,
+                                'expected_file' => $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php'
+                            ]);
+                            continue; // Skip this plugin
+                        }
                     }
 
                     // Register service provider if available
                     $instance = $plugin->getInstance();
                     $serviceProvider = $instance->getServiceProvider();
                     
-                    if ($serviceProvider && class_exists($serviceProvider, false)) {
+                    if ($serviceProvider && class_exists($serviceProvider)) {
                         $this->app->register($serviceProvider);
                         \Log::info("Registered service provider for plugin: {$plugin->name}", [
                             'service_provider' => $serviceProvider
@@ -126,7 +135,7 @@ class CoreServicesServiceProvider extends ServiceProvider
                     } else {
                         \Log::warning("Service provider not found or not registered for plugin: {$plugin->name}", [
                             'service_provider' => $serviceProvider,
-                            'class_exists' => $serviceProvider ? class_exists($serviceProvider, false) : false
+                            'class_exists' => $serviceProvider ? class_exists($serviceProvider) : false
                         ]);
                     }
                 } catch (\Exception $e) {
