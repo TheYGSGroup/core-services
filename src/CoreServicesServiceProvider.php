@@ -81,65 +81,58 @@ class CoreServicesServiceProvider extends ServiceProvider
 
             foreach ($activePlugins as $plugin) {
                 try {
-                    // Create a helper closure to register autoloader
-                    $registerAutoloader = function($pluginName, $pluginPath) {
-                        // Look for composer.json and register autoloader
-                        $composerJsonPath = $pluginPath . '/composer.json';
-                        if (\Illuminate\Support\Facades\File::exists($composerJsonPath)) {
-                            $composerJson = json_decode(\Illuminate\Support\Facades\File::get($composerJsonPath), true);
-                            
-                            if (isset($composerJson['autoload']['psr-4'])) {
-                                $vendorPath = $pluginPath . '/vendor';
-                                $autoloadPath = $vendorPath . '/autoload.php';
-                                
-                                if (\Illuminate\Support\Facades\File::exists($autoloadPath)) {
-                                    require_once $autoloadPath;
-                                } else {
-                                    // Register PSR-4 autoloading manually
-                                    foreach ($composerJson['autoload']['psr-4'] as $namespace => $path) {
-                                        $namespace = rtrim($namespace, '\\');
-                                        $path = $pluginPath . '/' . trim($path, '/');
-                                        
-                                        spl_autoload_register(function ($class) use ($namespace, $path) {
-                                            if (str_starts_with($class, $namespace)) {
-                                                $relativeClass = substr($class, strlen($namespace));
-                                                $file = $path . str_replace('\\', '/', $relativeClass) . '.php';
-                                                
-                                                if (file_exists($file)) {
-                                                    require_once $file;
-                                                }
-                                            }
-                                        });
-                                    }
-                                }
+                    // Use PluginManager's registerPluginAutoloader method for consistency
+                    $pluginManager = $this->app->make(PluginManager::class);
+                    
+                    // Get the reflection to access protected method
+                    $reflection = new \ReflectionClass($pluginManager);
+                    $registerMethod = $reflection->getMethod('registerPluginAutoloader');
+                    $registerMethod->setAccessible(true);
+                    
+                    // Register autoloader using PluginManager's method
+                    $registerMethod->invoke($pluginManager, $plugin->name, $plugin->rootPath);
+                    
+                    // Try to require the plugin file directly if class still doesn't exist
+                    // This handles cases where the autoloader might not pick up the class immediately
+                    $pluginMetadata = $plugin->metadata ?? [];
+                    $mainClass = $pluginMetadata['main_class'] ?? null;
+                    
+                    if ($mainClass && !class_exists($mainClass, false)) {
+                        // Try to find and require the file directly
+                        $parts = explode('\\', $mainClass);
+                        $className = array_pop($parts);
+                        $pluginFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+                        
+                        if (file_exists($pluginFile)) {
+                            require_once $pluginFile;
+                        } else {
+                            // Try alternative path structure
+                            $pluginFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
+                            if (file_exists($pluginFile)) {
+                                require_once $pluginFile;
                             }
                         }
-
-                        // Also register src/ directory as fallback
-                        $srcPath = $pluginPath . '/src';
-                        if (\Illuminate\Support\Facades\File::isDirectory($srcPath)) {
-                            spl_autoload_register(function ($class) use ($srcPath) {
-                                // Try to find class file in src directory
-                                $file = $srcPath . '/' . str_replace('\\', '/', $class) . '.php';
-                                if (file_exists($file)) {
-                                    require_once $file;
-                                }
-                            });
-                        }
-                    };
-
-                    // Register autoloader
-                    $registerAutoloader($plugin->name, $plugin->rootPath);
+                    }
 
                     // Register service provider if available
                     $instance = $plugin->getInstance();
                     $serviceProvider = $instance->getServiceProvider();
                     
-                    if ($serviceProvider && class_exists($serviceProvider)) {
+                    if ($serviceProvider && class_exists($serviceProvider, false)) {
                         $this->app->register($serviceProvider);
+                        \Log::info("Registered service provider for plugin: {$plugin->name}", [
+                            'service_provider' => $serviceProvider
+                        ]);
+                    } else {
+                        \Log::warning("Service provider not found or not registered for plugin: {$plugin->name}", [
+                            'service_provider' => $serviceProvider,
+                            'class_exists' => $serviceProvider ? class_exists($serviceProvider, false) : false
+                        ]);
                     }
                 } catch (\Exception $e) {
-                    \Log::error("Failed to load plugin {$plugin->name}: " . $e->getMessage());
+                    \Log::error("Failed to load plugin {$plugin->name}: " . $e->getMessage(), [
+                        'trace' => $e->getTraceAsString()
+                    ]);
                 }
             }
         } catch (\Exception $e) {
