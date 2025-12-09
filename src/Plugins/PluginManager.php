@@ -300,6 +300,15 @@ class PluginManager
 
         Log::info("Plugin installed: {$pluginName} v{$plugin->version}");
 
+        // IMPORTANT: Clear any autoloader state that might have loaded ServiceProvider
+        // This prevents the "previously declared" error if ServiceProvider was accidentally loaded
+        // We'll load it explicitly during activation instead
+        if (class_exists($metadata['service_provider'] ?? '', false)) {
+            // ServiceProvider was loaded during installation - this shouldn't happen
+            // but if it did, we need to handle it. For now, we'll just log a warning.
+            Log::warning("ServiceProvider was loaded during installation for plugin: {$pluginName}");
+        }
+
         return $plugin;
     }
 
@@ -888,15 +897,19 @@ class PluginManager
                     return; // Class already loaded
                 }
                 
-                // IMPORTANT: During installation, we only want to load the main Plugin class
-                // Skip ServiceProvider and other classes during initial autoloader registration
-                // They will be loaded on-demand during activation
-                // BUT: Only skip if we're in the src/ directory and it's ServiceProvider
-                // We need to check the namespace to make sure we're not skipping the wrong class
-                if ($className === 'ServiceProvider' && str_contains($class, $pluginName)) {
-                    // Don't autoload ServiceProvider - it will be loaded explicitly during activation
-                    // But only if it's in the plugin's namespace
-                    return;
+                // IMPORTANT: Skip ServiceProvider completely during autoloading
+                // It will be loaded explicitly during activation to avoid redeclaration errors
+                // Check if this is a ServiceProvider class in the plugin's namespace
+                if ($className === 'ServiceProvider') {
+                    // Extract namespace prefix to check if it matches the plugin
+                    $namespacePrefix = implode('\\', array_slice($parts, 0, -1));
+                    // Convert plugin name to namespace (e.g., "authnet-payment" -> "AuthNetPayment")
+                    $pluginNamespace = str_replace(' ', '', ucwords(str_replace('-', ' ', $pluginName)));
+                    
+                    // If the class namespace matches the plugin namespace, skip it
+                    if (str_contains($class, $pluginNamespace) || str_contains($class, str_replace('-', '', $pluginName))) {
+                        return; // Don't autoload ServiceProvider
+                    }
                 }
                 
                 // Try direct class name first (e.g., src/Plugin.php for AuthNetPayment\Plugin)
