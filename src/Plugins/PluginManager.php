@@ -571,7 +571,16 @@ class PluginManager
             try {
                 // Uninstall current version (but keep database entry)
                 if (File::isDirectory($plugin->rootPath)) {
+                    // Recursively delete and ensure it's completely gone
                     File::deleteDirectory($plugin->rootPath);
+                    // Wait for filesystem to catch up
+                    usleep(200000); // 0.2 seconds
+                    // Double-check it's gone, if not try again
+                    if (File::isDirectory($plugin->rootPath)) {
+                        // Use system command as fallback for stubborn directories
+                        @exec("rm -rf " . escapeshellarg($plugin->rootPath) . " 2>&1");
+                        usleep(100000); // 0.1 seconds
+                    }
                 }
                 
                 // Remove from database temporarily to allow re-installation
