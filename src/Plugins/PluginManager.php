@@ -340,9 +340,17 @@ class PluginManager
         // Register service provider if available
         $serviceProvider = $instance->getServiceProvider();
         if ($serviceProvider) {
-            // Check if class exists and hasn't been registered yet
+            // Check if class exists (without autoloading to avoid triggering redeclaration)
+            $classExists = class_exists($serviceProvider, false);
+            
+            // If class doesn't exist yet, try to load it via autoloader
+            if (!$classExists) {
+                // Trigger autoloader - but it should check if class exists first
+                class_exists($serviceProvider);
+            }
+            
+            // Now check if it exists and register if not already registered
             if (class_exists($serviceProvider)) {
-                // Check if it's already registered by checking if it's in the service providers list
                 $registeredProviders = app()->getLoadedProviders();
                 if (!isset($registeredProviders[$serviceProvider])) {
                     app()->register($serviceProvider);
