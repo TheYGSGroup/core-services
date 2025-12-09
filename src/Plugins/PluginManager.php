@@ -897,6 +897,10 @@ class PluginManager
                 }
             }, true); // Prepend to autoloader stack for priority ($throw = true, $prepend = true)
         }
+        
+        // Mark this plugin's autoloader as registered
+        $key = $pluginName . ':' . $pluginPath;
+        self::$registeredAutoloaders[$key] = true;
     }
 }
 
