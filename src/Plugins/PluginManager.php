@@ -891,8 +891,11 @@ class PluginManager
                 // IMPORTANT: During installation, we only want to load the main Plugin class
                 // Skip ServiceProvider and other classes during initial autoloader registration
                 // They will be loaded on-demand during activation
-                if ($className === 'ServiceProvider') {
+                // BUT: Only skip if we're in the src/ directory and it's ServiceProvider
+                // We need to check the namespace to make sure we're not skipping the wrong class
+                if ($className === 'ServiceProvider' && str_contains($class, $pluginName)) {
                     // Don't autoload ServiceProvider - it will be loaded explicitly during activation
+                    // But only if it's in the plugin's namespace
                     return;
                 }
                 
