@@ -671,6 +671,32 @@ class PluginManager
     }
 
     /**
+     * Recursively make directory and all contents writable
+     *
+     * @param string $path
+     * @return void
+     */
+    protected function makeDirectoryWritable(string $path): void
+    {
+        if (File::isDirectory($path)) {
+            @chmod($path, 0777);
+            try {
+                $iterator = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+                    \RecursiveIteratorIterator::SELF_FIRST
+                );
+                
+                foreach ($iterator as $item) {
+                    @chmod($item->getPathname(), 0777);
+                }
+            } catch (\Exception $e) {
+                // Silently fail - permissions may not be changeable in all environments
+                Log::debug("Could not set permissions on all files in {$path}: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Find plugin.json in extracted directory
      *
      * @param string $path
