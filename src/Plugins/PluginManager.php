@@ -153,7 +153,12 @@ class PluginManager
 
         // Create plugins directory if it doesn't exist
         if (!File::isDirectory($this->pluginsPath)) {
-            File::makeDirectory($this->pluginsPath, 0755, true);
+            File::makeDirectory($this->pluginsPath, 0777, true);
+        }
+        
+        // Ensure plugins directory is writable
+        if (!is_writable($this->pluginsPath)) {
+            @chmod($this->pluginsPath, 0777);
         }
 
         // Open ZIP archive
