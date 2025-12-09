@@ -339,8 +339,15 @@ class PluginManager
 
         // Register service provider if available
         $serviceProvider = $instance->getServiceProvider();
-        if ($serviceProvider && class_exists($serviceProvider)) {
-            app()->register($serviceProvider);
+        if ($serviceProvider) {
+            // Check if class exists and hasn't been registered yet
+            if (class_exists($serviceProvider)) {
+                // Check if it's already registered by checking if it's in the service providers list
+                $registeredProviders = app()->getLoadedProviders();
+                if (!isset($registeredProviders[$serviceProvider])) {
+                    app()->register($serviceProvider);
+                }
+            }
         }
 
         // Call activation hook
