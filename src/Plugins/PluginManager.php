@@ -806,8 +806,19 @@ class PluginManager
      * @param string $pluginPath
      * @return void
      */
+    /**
+     * Track which plugins have autoloaders registered to prevent duplicate registration
+     */
+    protected static array $registeredAutoloaders = [];
+
     protected function registerPluginAutoloader(string $pluginName, string $pluginPath): void
     {
+        // Prevent duplicate autoloader registration for the same plugin
+        $key = $pluginName . ':' . $pluginPath;
+        if (isset(self::$registeredAutoloaders[$key])) {
+            return; // Already registered
+        }
+        
         // Look for composer.json and register autoloader
         $composerJsonPath = $pluginPath . '/composer.json';
         if (File::exists($composerJsonPath)) {
