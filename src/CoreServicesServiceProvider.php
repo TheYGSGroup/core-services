@@ -126,19 +126,29 @@ class CoreServicesServiceProvider extends ServiceProvider
                     }
 
                     // Register service provider if available
-                    $instance = $plugin->getInstance();
-                    $serviceProvider = $instance->getServiceProvider();
-                    
-                    if ($serviceProvider && class_exists($serviceProvider)) {
-                        $this->app->register($serviceProvider);
-                        \Log::info("Registered service provider for plugin: {$plugin->name}", [
-                            'service_provider' => $serviceProvider
-                        ]);
-                    } else {
-                        \Log::warning("Service provider not found or not registered for plugin: {$plugin->name}", [
-                            'service_provider' => $serviceProvider,
-                            'class_exists' => $serviceProvider ? class_exists($serviceProvider) : false
-                        ]);
+                    // IMPORTANT: Only get instance if plugin is actually active
+                    // Don't call getInstance() for inactive plugins as it may trigger class loading
+                    try {
+                        $instance = $plugin->getInstance();
+                        $serviceProvider = $instance->getServiceProvider();
+                        
+                        if ($serviceProvider && class_exists($serviceProvider, false)) {
+                            // Only register if class exists and hasn't been registered
+                            $registeredProviders = $this->app->getLoadedProviders();
+                            if (!isset($registeredProviders[$serviceProvider])) {
+                                $this->app->register($serviceProvider);
+                                \Log::info("Registered service provider for plugin: {$plugin->name}", [
+                                    'service_provider' => $serviceProvider
+                                ]);
+                            }
+                        } else {
+                            \Log::warning("Service provider not found or not registered for plugin: {$plugin->name}", [
+                                'service_provider' => $serviceProvider,
+                                'class_exists' => $serviceProvider ? class_exists($serviceProvider, false) : false
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error("Failed to get plugin instance for {$plugin->name}: " . $e->getMessage());
                     }
                 } catch (\Exception $e) {
                     \Log::error("Failed to load plugin {$plugin->name}: " . $e->getMessage(), [
