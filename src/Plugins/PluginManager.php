@@ -553,6 +553,9 @@ class PluginManager
                 if (File::isDirectory($plugin->rootPath)) {
                     File::deleteDirectory($plugin->rootPath);
                 }
+                
+                // Remove from database temporarily to allow re-installation
+                DB::table('plugins')->where('name', $name)->delete();
 
                 // Install new version
                 $updatedPlugin = $this->installPlugin($tempZipPath);
