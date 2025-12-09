@@ -69,6 +69,17 @@ return [
         |
         */
         'auto_discover' => env('CORE_SERVICES_PLUGIN_AUTO_DISCOVER', true),
+
+        /*
+        |--------------------------------------------------------------------------
+        | Plugin Management Site URL
+        |--------------------------------------------------------------------------
+        |
+        | The base URL of the plugin management site where plugins are hosted
+        | and updates are checked from.
+        |
+        */
+        'management_site_url' => env('PLUGIN_MANAGEMENT_SITE_URL', 'https://plugins.gregoryscottdev.com'),
     ],
 
     /*

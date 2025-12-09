@@ -4,6 +4,7 @@ namespace Ygs\CoreServices\Plugins;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Ygs\CoreServices\Plugins\Contracts\PluginInterface;
@@ -407,6 +408,196 @@ class PluginManager
         Log::info("Plugin uninstalled: {$name}");
 
         return true;
+    }
+
+    /**
+     * Check for available updates for all installed plugins
+     *
+     * @return array Array of update information: ['plugin_name' => ['current' => '1.0.0', 'available' => '1.0.1', 'plugin' => Plugin]]
+     */
+    public function checkForUpdates(): array
+    {
+        $updates = [];
+        $installedPlugins = $this->getInstalledPlugins();
+        $managementSiteUrl = config('core-services.plugins.management_site_url');
+
+        if (!$managementSiteUrl) {
+            Log::warning('Plugin management site URL not configured');
+            return $updates;
+        }
+
+        try {
+            // Fetch all available plugins from management site
+            $response = Http::timeout(10)->get("{$managementSiteUrl}/api/plugins");
+
+            if (!$response->successful()) {
+                Log::warning('Failed to fetch plugins from management site', [
+                    'status' => $response->status(),
+                    'url' => "{$managementSiteUrl}/api/plugins",
+                ]);
+                return $updates;
+            }
+
+            $availablePlugins = $response->json('data', []);
+
+            // Check each installed plugin for updates
+            foreach ($installedPlugins as $installedPlugin) {
+                // Find matching plugin in available plugins by name/slug
+                $availablePlugin = collect($availablePlugins)->first(function ($plugin) use ($installedPlugin) {
+                    return ($plugin['name'] ?? $plugin['slug'] ?? '') === $installedPlugin->name;
+                });
+
+                if ($availablePlugin) {
+                    $currentVersion = $installedPlugin->version;
+                    $availableVersion = $availablePlugin['version'] ?? '0.0.0';
+
+                    // Compare versions
+                    if (version_compare($availableVersion, $currentVersion, '>')) {
+                        $updates[$installedPlugin->name] = [
+                            'current' => $currentVersion,
+                            'available' => $availableVersion,
+                            'plugin' => $installedPlugin,
+                            'download_url' => $availablePlugin['download_url'] ?? null,
+                            'changelog' => $availablePlugin['changelog'] ?? null,
+                        ];
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Error checking for plugin updates: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+
+        return $updates;
+    }
+
+    /**
+     * Get update information for a specific plugin
+     *
+     * @param string $name
+     * @return array|null Update information or null if no update available
+     */
+    public function getUpdateInfo(string $name): ?array
+    {
+        $updates = $this->checkForUpdates();
+        return $updates[$name] ?? null;
+    }
+
+    /**
+     * Update a plugin to the latest version
+     *
+     * @param string $name Plugin name
+     * @param string|null $downloadUrl Optional direct download URL (if null, will fetch from management site)
+     * @return bool
+     * @throws \Exception
+     */
+    public function updatePlugin(string $name, ?string $downloadUrl = null): bool
+    {
+        $plugin = $this->getPlugin($name);
+
+        if (!$plugin) {
+            throw new \Exception("Plugin {$name} is not installed");
+        }
+
+        $wasActive = $plugin->isActive;
+
+        // Get update information
+        $updateInfo = $this->getUpdateInfo($name);
+
+        if (!$updateInfo) {
+            throw new \Exception("No update available for plugin {$name}");
+        }
+
+        // Deactivate plugin before update
+        if ($wasActive) {
+            $this->deactivatePlugin($name);
+        }
+
+        // Download the update
+        $downloadUrl = $downloadUrl ?? $updateInfo['download_url'];
+        if (!$downloadUrl) {
+            throw new \Exception("Download URL not available for plugin {$name}");
+        }
+
+        $tempZipPath = sys_get_temp_dir() . '/plugin_update_' . uniqid() . '.zip';
+
+        try {
+            // Download the ZIP file
+            $response = Http::timeout(60)->get($downloadUrl);
+
+            if (!$response->successful()) {
+                throw new \Exception("Failed to download plugin update: HTTP {$response->status()}");
+            }
+
+            File::put($tempZipPath, $response->body());
+
+            // Backup current plugin
+            $backupPath = sys_get_temp_dir() . '/plugin_backup_' . $name . '_' . time();
+            if (File::isDirectory($plugin->rootPath)) {
+                File::copyDirectory($plugin->rootPath, $backupPath);
+            }
+
+            try {
+                // Uninstall current version (but keep database entry)
+                if (File::isDirectory($plugin->rootPath)) {
+                    File::deleteDirectory($plugin->rootPath);
+                }
+
+                // Install new version
+                $updatedPlugin = $this->installPlugin($tempZipPath);
+
+                // Update database entry with new version
+                DB::table('plugins')
+                    ->where('name', $name)
+                    ->update([
+                        'version' => $updateInfo['available'],
+                        'title' => $updatedPlugin->title,
+                        'description' => $updatedPlugin->description,
+                        'metadata' => json_encode($updatedPlugin->metadata),
+                        'root_path' => $updatedPlugin->rootPath,
+                        'updated_at' => now(),
+                    ]);
+
+                // Reactivate if it was active before
+                if ($wasActive) {
+                    $this->activatePlugin($name);
+                }
+
+                // Clean up backup
+                if (File::isDirectory($backupPath)) {
+                    File::deleteDirectory($backupPath);
+                }
+
+                Log::info("Plugin updated: {$name} from {$updateInfo['current']} to {$updateInfo['available']}");
+
+                return true;
+            } catch (\Exception $e) {
+                // Rollback: restore backup
+                if (File::isDirectory($backupPath)) {
+                    if (File::isDirectory($plugin->rootPath)) {
+                        File::deleteDirectory($plugin->rootPath);
+                    }
+                    File::moveDirectory($backupPath, $plugin->rootPath);
+                }
+
+                // Reactivate if it was active before
+                if ($wasActive) {
+                    try {
+                        $this->activatePlugin($name);
+                    } catch (\Exception $activateException) {
+                        Log::error("Failed to reactivate plugin after rollback: " . $activateException->getMessage());
+                    }
+                }
+
+                throw new \Exception("Failed to update plugin {$name}: " . $e->getMessage());
+            }
+        } finally {
+            // Clean up temp ZIP file
+            if (File::exists($tempZipPath)) {
+                File::delete($tempZipPath);
+            }
+        }
     }
 
     /**

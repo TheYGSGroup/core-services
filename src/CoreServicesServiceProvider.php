@@ -36,6 +36,8 @@ class CoreServicesServiceProvider extends ServiceProvider
                 \Ygs\CoreServices\Console\Commands\PluginActivateCommand::class,
                 \Ygs\CoreServices\Console\Commands\PluginDeactivateCommand::class,
                 \Ygs\CoreServices\Console\Commands\PluginListCommand::class,
+                \Ygs\CoreServices\Console\Commands\PluginUpdateCheckCommand::class,
+                \Ygs\CoreServices\Console\Commands\PluginUpdateCommand::class,
             ]);
         }
 
