@@ -244,41 +244,31 @@ class PluginManager
         }
 
         // Create plugin instance to verify it can be loaded
-        // IMPORTANT: Only load the main Plugin class, NOT the ServiceProvider
+        // IMPORTANT: Do NOT register autoloader during installation to avoid loading ServiceProvider
+        // We'll only verify the Plugin class file exists, not actually load it
         $mainClass = $metadata['main_class'] ?? '';
         if ($mainClass) {
-            // Register autoloader first
-            $this->registerPluginAutoloader($pluginName, $pluginPath);
+            // Extract class name to find the file
+            $parts = explode('\\', $mainClass);
+            $className = array_pop($parts);
+            $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
             
-            // Try to load ONLY the main class - use class_exists with false to avoid autoloading
-            // Then require the specific file directly to avoid loading ServiceProvider
-            if (!class_exists($mainClass, false)) {
-                // Try to find and require ONLY the Plugin class file
-                $parts = explode('\\', $mainClass);
-                $className = array_pop($parts);
-                $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
-                
-                // Use file_exists() instead of File::exists() for direct file system check
-                if (file_exists($pluginFile)) {
-                    require_once $pluginFile;
-                } else {
-                    // Try alternative path structure
-                    $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . $className . '.php';
-                    if (file_exists($pluginFile)) {
-                        require_once $pluginFile;
-                    }
-                }
-                
-                // Check again after direct require (without autoloading)
-                if (!class_exists($mainClass, false)) {
-                    // Debug: Check if file actually exists
+            // Verify the Plugin class file exists without loading it
+            if (!file_exists($pluginFile)) {
+                // Try alternative path structure
+                $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . $className . '.php';
+                if (!file_exists($pluginFile)) {
                     $actualFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
                     $fileExists = file_exists($actualFile);
                     $dirExists = is_dir($pluginPath . DIRECTORY_SEPARATOR . 'src');
                     File::deleteDirectory($pluginPath);
-                    throw new \Exception("Plugin class {$mainClass} not found. File exists: " . ($fileExists ? 'YES' : 'NO') . ", Dir exists: " . ($dirExists ? 'YES' : 'NO') . ", Path: {$actualFile}");
+                    throw new \Exception("Plugin class file not found. File exists: " . ($fileExists ? 'YES' : 'NO') . ", Dir exists: " . ($dirExists ? 'YES' : 'NO') . ", Path: {$actualFile}");
                 }
             }
+            
+            // Do NOT load the class or register autoloader during installation
+            // This prevents ServiceProvider from being loaded accidentally
+            // The class will be loaded properly during activation when autoloader is registered
         }
 
         // Save to database
