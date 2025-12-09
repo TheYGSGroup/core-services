@@ -244,14 +244,16 @@ class PluginManager
         }
 
         // Create plugin instance to verify it can be loaded
+        // IMPORTANT: Only load the main Plugin class, NOT the ServiceProvider
         $mainClass = $metadata['main_class'] ?? '';
         if ($mainClass) {
             // Register autoloader first
             $this->registerPluginAutoloader($pluginName, $pluginPath);
             
-            // Try to load the class - check if file exists and require it directly if autoloader fails
-            if (!class_exists($mainClass)) {
-                // Try to find and require the file directly
+            // Try to load ONLY the main class - use class_exists with false to avoid autoloading
+            // Then require the specific file directly to avoid loading ServiceProvider
+            if (!class_exists($mainClass, false)) {
+                // Try to find and require ONLY the Plugin class file
                 $parts = explode('\\', $mainClass);
                 $className = array_pop($parts);
                 $pluginFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
@@ -267,8 +269,8 @@ class PluginManager
                     }
                 }
                 
-                // Check again after direct require
-                if (!class_exists($mainClass)) {
+                // Check again after direct require (without autoloading)
+                if (!class_exists($mainClass, false)) {
                     // Debug: Check if file actually exists
                     $actualFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
                     $fileExists = file_exists($actualFile);
@@ -343,10 +345,25 @@ class PluginManager
             // Check if class exists (without autoloading to avoid triggering redeclaration)
             $classExists = class_exists($serviceProvider, false);
             
-            // If class doesn't exist yet, try to load it via autoloader
+            // If class doesn't exist yet, load it explicitly from the plugin directory
             if (!$classExists) {
-                // Trigger autoloader - but it should check if class exists first
-                class_exists($serviceProvider);
+                // Load ServiceProvider explicitly from the plugin's src directory
+                $parts = explode('\\', $serviceProvider);
+                $className = array_pop($parts);
+                $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+                
+                if (file_exists($serviceProviderFile)) {
+                    // Check again before requiring to avoid redeclaration
+                    if (!class_exists($serviceProvider, false)) {
+                        require_once $serviceProviderFile;
+                    }
+                } else {
+                    // Try alternative path
+                    $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
+                    if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
+                        require_once $serviceProviderFile;
+                    }
+                }
             }
             
             // Now check if it exists and register if not already registered
@@ -869,6 +886,14 @@ class PluginManager
                 // Check if class already exists before requiring
                 if (class_exists($class, false)) {
                     return; // Class already loaded
+                }
+                
+                // IMPORTANT: During installation, we only want to load the main Plugin class
+                // Skip ServiceProvider and other classes during initial autoloader registration
+                // They will be loaded on-demand during activation
+                if ($className === 'ServiceProvider') {
+                    // Don't autoload ServiceProvider - it will be loaded explicitly during activation
+                    return;
                 }
                 
                 // Try direct class name first (e.g., src/Plugin.php for AuthNetPayment\Plugin)
