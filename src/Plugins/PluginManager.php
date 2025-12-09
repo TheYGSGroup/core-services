@@ -200,13 +200,28 @@ class PluginManager
         // Copy extracted files to plugins directory
         // Use copyDirectory instead of moveDirectory for better reliability in Docker/permission-restricted environments
         if (File::isDirectory($pluginPath)) {
+            // Recursively delete and ensure it's gone
             File::deleteDirectory($pluginPath);
+            // Wait a moment for filesystem to catch up
+            usleep(100000); // 0.1 seconds
+        }
+        
+        // Ensure parent directory exists and is writable
+        $parentDir = dirname($pluginPath);
+        if (!File::isDirectory($parentDir)) {
+            File::makeDirectory($parentDir, 0777, true);
+        }
+        if (!is_writable($parentDir)) {
+            @chmod($parentDir, 0777);
         }
         
         if (!File::copyDirectory($tempPath, $pluginPath)) {
             File::deleteDirectory($tempPath);
             throw new \Exception("Failed to copy plugin files to {$pluginPath}");
         }
+        
+        // Ensure plugin directory and all files are writable
+        $this->makeDirectoryWritable($pluginPath);
         
         // Clean up temp directory
         File::deleteDirectory($tempPath);
