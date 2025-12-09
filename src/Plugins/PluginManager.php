@@ -192,19 +192,29 @@ class PluginManager
             throw new \Exception("Plugin {$pluginName} is already installed");
         }
 
-        // Move extracted files to plugins directory
+        // Copy extracted files to plugins directory
+        // Use copyDirectory instead of moveDirectory for better reliability in Docker/permission-restricted environments
         if (File::isDirectory($pluginPath)) {
             File::deleteDirectory($pluginPath);
         }
         
-        if (!File::moveDirectory($tempPath, $pluginPath)) {
+        if (!File::copyDirectory($tempPath, $pluginPath)) {
             File::deleteDirectory($tempPath);
-            throw new \Exception("Failed to move plugin files to {$pluginPath}");
+            throw new \Exception("Failed to copy plugin files to {$pluginPath}");
         }
         
-        // Verify the move succeeded
+        // Clean up temp directory
+        File::deleteDirectory($tempPath);
+        
+        // Verify the copy succeeded
         if (!File::isDirectory($pluginPath)) {
             throw new \Exception("Plugin directory was not created at {$pluginPath}");
+        }
+        
+        // Verify plugin.json exists in the new location
+        if (!File::exists($pluginPath . DIRECTORY_SEPARATOR . 'plugin.json')) {
+            File::deleteDirectory($pluginPath);
+            throw new \Exception("plugin.json not found in plugin directory after installation");
         }
 
         // Check dependencies
