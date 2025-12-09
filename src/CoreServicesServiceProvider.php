@@ -99,24 +99,29 @@ class CoreServicesServiceProvider extends ServiceProvider
                     $pluginMetadata = $plugin->metadata ?? [];
                     $mainClass = $pluginMetadata['main_class'] ?? null;
                     
-                    if ($mainClass && !class_exists($mainClass)) {
-                        // Try to find and require the file directly
+                    if ($mainClass && !class_exists($mainClass, false)) {
+                        // Try to find and require ONLY the Plugin class file directly
+                        // IMPORTANT: Use class_exists with false to avoid triggering autoloader
+                        // which might load ServiceProvider
                         $parts = explode('\\', $mainClass);
                         $className = array_pop($parts);
                         $pluginFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
                         
                         if (file_exists($pluginFile)) {
-                            require_once $pluginFile;
+                            // Only require if class doesn't exist
+                            if (!class_exists($mainClass, false)) {
+                                require_once $pluginFile;
+                            }
                         } else {
                             // Try alternative path structure
                             $pluginFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
-                            if (file_exists($pluginFile)) {
+                            if (file_exists($pluginFile) && !class_exists($mainClass, false)) {
                                 require_once $pluginFile;
                             }
                         }
                         
-                        // Check again after direct require
-                        if (!class_exists($mainClass)) {
+                        // Check again after direct require (without autoloading)
+                        if (!class_exists($mainClass, false)) {
                             \Log::error("Plugin class still not found after direct require: {$mainClass}", [
                                 'plugin_path' => $plugin->rootPath,
                                 'expected_file' => $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php'
