@@ -818,6 +818,11 @@ class PluginManager
                         $path = $pluginPath . '/' . trim($path, '/');
                         
                         spl_autoload_register(function ($class) use ($namespace, $path) {
+                            // Check if class already exists before requiring
+                            if (class_exists($class, false)) {
+                                return; // Class already loaded
+                            }
+                            
                             if (str_starts_with($class, $namespace)) {
                                 $relativeClass = substr($class, strlen($namespace));
                                 $file = $path . str_replace('\\', '/', $relativeClass) . '.php';
@@ -841,6 +846,11 @@ class PluginManager
                 // Extract class name from fully qualified name
                 $parts = explode('\\', $class);
                 $className = array_pop($parts);
+                
+                // Check if class already exists before requiring
+                if (class_exists($class, false)) {
+                    return; // Class already loaded
+                }
                 
                 // Try direct class name first (e.g., src/Plugin.php for AuthNetPayment\Plugin)
                 // This is the most common pattern for simple plugins
