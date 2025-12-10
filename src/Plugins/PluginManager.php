@@ -961,14 +961,9 @@ class PluginManager
                     return; // Class already loaded
                 }
                 
-                // IMPORTANT: Skip ServiceProvider completely during autoloading
-                // It will be loaded explicitly during activation to avoid redeclaration errors
-                // Check if this is a ServiceProvider class - skip ALL ServiceProvider classes
-                // to prevent redeclaration errors
-                if ($className === 'ServiceProvider') {
-                    // Skip all ServiceProvider classes - they'll be loaded explicitly during activation
-                    return; // Don't autoload ServiceProvider
-                }
+                // Note: We no longer skip ServiceProvider classes here
+                // They will be loaded naturally by the autoloader when needed
+                // Redeclaration errors are handled gracefully in CoreServicesServiceProvider
                 
                 // Try direct class name first (e.g., src/Plugin.php for AuthNetPayment\Plugin)
                 // This is the most common pattern for simple plugins
