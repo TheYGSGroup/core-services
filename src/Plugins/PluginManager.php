@@ -410,6 +410,28 @@ class PluginManager
         // Register autoloader for plugin
         $this->registerPluginAutoloader($name, $plugin->rootPath);
 
+        // Verify autoloader is working by checking if we can find the Plugin class file
+        $mainClass = $plugin->mainClass;
+        if (!class_exists($mainClass, false)) {
+            // Class not loaded yet - verify the file exists
+            $parts = explode('\\', $mainClass);
+            $className = array_pop($parts);
+            $pluginFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+            
+            if (!file_exists($pluginFile)) {
+                // Try alternative path
+                $pluginFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
+                if (!file_exists($pluginFile)) {
+                    throw new \Exception("Plugin class file not found for {$mainClass}. Expected: {$plugin->rootPath}/src/{$className}.php");
+                }
+            }
+            
+            // File exists but class not loaded - try to trigger autoloading
+            if (!class_exists($mainClass)) {
+                throw new \Exception("Plugin class {$mainClass} not found after autoloader registration. File exists at: {$pluginFile}");
+            }
+        }
+
         // Get plugin instance first
         // We'll handle ServiceProvider registration after getInstance() to avoid conflicts
         $instance = $plugin->getInstance();
