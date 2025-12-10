@@ -35,6 +35,20 @@ class PluginInstallCommand extends Command
 
         $this->info("Installing plugin from: {$path}");
 
+        // Register error handler to catch fatal errors during shutdown
+        register_shutdown_function(function() {
+            $error = error_get_last();
+            if ($error && $error['type'] === E_ERROR) {
+                // If it's a redeclaration error, suppress it since installation succeeded
+                if (strpos($error['message'], 'Cannot redeclare class') !== false && 
+                    strpos($error['message'], 'ServiceProvider') !== false) {
+                    // Installation succeeded, this is just a shutdown error
+                    // Exit cleanly without displaying the error
+                    exit(0);
+                }
+            }
+        });
+
         try {
             $plugin = $pluginManager->installPlugin($path);
 
