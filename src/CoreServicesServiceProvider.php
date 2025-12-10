@@ -140,34 +140,33 @@ class CoreServicesServiceProvider extends ServiceProvider
                         if ($serviceProvider) {
                             // Try to register the service provider directly
                             // Laravel will attempt to autoload it if needed
-                            // If redeclaration error occurs, suppress it and check declared classes
                             $registeredProviders = $this->app->getLoadedProviders();
                             if (!isset($registeredProviders[$serviceProvider])) {
-                                // Use @ to suppress fatal errors during class_exists check
-                                // If class_exists fails due to redeclaration, check declared classes
-                                $classExists = @class_exists($serviceProvider);
-                                
-                                if (!$classExists) {
-                                    // Check if class exists in declared classes (might have been loaded via use statement)
+                                try {
+                                    // Just try to register - Laravel will autoload if needed
+                                    // If redeclaration error occurs, it's a fatal error that we can't catch
+                                    // But we can check declared classes first to see if it's already loaded
                                     $declaredClasses = get_declared_classes();
-                                    $classExists = in_array($serviceProvider, $declaredClasses);
-                                }
-                                
-                                if ($classExists) {
-                                    try {
+                                    $alreadyDeclared = in_array($serviceProvider, $declaredClasses);
+                                    
+                                    if ($alreadyDeclared || class_exists($serviceProvider, false)) {
+                                        // Class is already loaded, safe to register
                                         $this->app->register($serviceProvider);
                                         \Log::info("Registered service provider for plugin: {$plugin->name}", [
                                             'service_provider' => $serviceProvider
                                         ]);
-                                    } catch (\Throwable $e) {
-                                        \Log::error("Failed to register service provider for plugin: {$plugin->name}", [
-                                            'service_provider' => $serviceProvider,
-                                            'error' => $e->getMessage()
+                                    } else {
+                                        // Class not loaded yet - try registering and let Laravel autoload it
+                                        // This might trigger redeclaration error, but we can't prevent it
+                                        $this->app->register($serviceProvider);
+                                        \Log::info("Registered service provider for plugin: {$plugin->name} (autoloaded)", [
+                                            'service_provider' => $serviceProvider
                                         ]);
                                     }
-                                } else {
-                                    \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
-                                        'service_provider' => $serviceProvider
+                                } catch (\Throwable $e) {
+                                    \Log::error("Failed to register service provider for plugin: {$plugin->name}", [
+                                        'service_provider' => $serviceProvider,
+                                        'error' => $e->getMessage()
                                     ]);
                                 }
                             }
