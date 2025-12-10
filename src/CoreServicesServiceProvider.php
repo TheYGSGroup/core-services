@@ -132,42 +132,40 @@ class CoreServicesServiceProvider extends ServiceProvider
 
                     // Register service provider if available
                     // IMPORTANT: Get service provider from metadata, NOT from getInstance()
-                    // to avoid triggering class loading that might cause redeclaration errors
+                    // Don't try to explicitly load ServiceProvider - let it load naturally via autoloader
                     try {
                         // Get service provider class name from metadata instead of getInstance()
                         $serviceProvider = $plugin->metadata['service_provider'] ?? null;
                         
-                        if ($serviceProvider && !class_exists($serviceProvider, false)) {
-                            // Load ServiceProvider explicitly to prevent autoloader conflicts
-                            $parts = explode('\\', $serviceProvider);
-                            $className = array_pop($parts);
-                            $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
-                            
-                            if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
-                                require_once $serviceProviderFile;
+                        if ($serviceProvider) {
+                            // Try to register the service provider - Laravel will autoload it if needed
+                            // Only register if class exists and hasn't been registered
+                            if (class_exists($serviceProvider, false)) {
+                                $registeredProviders = $this->app->getLoadedProviders();
+                                if (!isset($registeredProviders[$serviceProvider])) {
+                                    $this->app->register($serviceProvider);
+                                    \Log::info("Registered service provider for plugin: {$plugin->name}", [
+                                        'service_provider' => $serviceProvider
+                                    ]);
+                                }
                             } else {
-                                // Try alternative path
-                                $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
-                                if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
-                                    require_once $serviceProviderFile;
+                                // Service provider class doesn't exist yet - try to register it anyway
+                                // Laravel will attempt to autoload it, which should work if autoloader is set up correctly
+                                try {
+                                    $registeredProviders = $this->app->getLoadedProviders();
+                                    if (!isset($registeredProviders[$serviceProvider])) {
+                                        $this->app->register($serviceProvider);
+                                        \Log::info("Registered service provider for plugin: {$plugin->name} (autoloaded)", [
+                                            'service_provider' => $serviceProvider
+                                        ]);
+                                    }
+                                } catch (\Exception $e) {
+                                    \Log::warning("Could not register service provider for plugin: {$plugin->name}", [
+                                        'service_provider' => $serviceProvider,
+                                        'error' => $e->getMessage()
+                                    ]);
                                 }
                             }
-                        }
-                        
-                        if ($serviceProvider && class_exists($serviceProvider, false)) {
-                            // Only register if class exists and hasn't been registered
-                            $registeredProviders = $this->app->getLoadedProviders();
-                            if (!isset($registeredProviders[$serviceProvider])) {
-                                $this->app->register($serviceProvider);
-                                \Log::info("Registered service provider for plugin: {$plugin->name}", [
-                                    'service_provider' => $serviceProvider
-                                ]);
-                            }
-                        } else {
-                            \Log::warning("Service provider not found or not registered for plugin: {$plugin->name}", [
-                                'service_provider' => $serviceProvider,
-                                'class_exists' => $serviceProvider ? class_exists($serviceProvider, false) : false
-                            ]);
                         }
                     } catch (\Exception $e) {
                         \Log::error("Failed to register service provider for {$plugin->name}: " . $e->getMessage());
