@@ -138,8 +138,13 @@ class Plugin
     public function getInstance(): PluginInterface
     {
         if ($this->instance === null) {
-            if (!class_exists($this->mainClass)) {
-                throw new \Exception("Plugin class {$this->mainClass} not found");
+            // First check if class exists without autoloading
+            if (!class_exists($this->mainClass, false)) {
+                // Class not loaded - try to trigger autoloading
+                // This will work if autoloader is registered
+                if (!class_exists($this->mainClass)) {
+                    throw new \Exception("Plugin class {$this->mainClass} not found. Make sure the plugin autoloader is registered.");
+                }
             }
 
             $instance = new $this->mainClass($this->rootPath, $this->metadata);
