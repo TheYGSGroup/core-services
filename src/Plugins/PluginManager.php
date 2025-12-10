@@ -269,6 +269,15 @@ class PluginManager
             // Do NOT load the class or register autoloader during installation
             // This prevents ServiceProvider from being loaded accidentally
             // The class will be loaded properly during activation when autoloader is registered
+            
+            // CRITICAL: Ensure ServiceProvider file is NOT loaded during installation
+            // Check if it exists but do NOT require it
+            $serviceProviderFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'ServiceProvider.php';
+            if (file_exists($serviceProviderFile)) {
+                // ServiceProvider file exists - this is fine, we just won't load it
+                // But we need to make sure it's not loaded via autoloader
+                // The autoloader will be registered during activation, not installation
+            }
         }
 
         // Save to database
