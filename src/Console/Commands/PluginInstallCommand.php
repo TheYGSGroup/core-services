@@ -12,68 +12,111 @@ class PluginInstallCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'plugin:install {path : Path to the plugin ZIP file} {--no-interaction : Do not ask for confirmation}';
+    protected $signature = 'plugin:install {plugin : Plugin name (for remote) or path to ZIP file (for local)} 
+                            {--from-remote : Install from plugin management site}
+                            {--remote : Alias for --from-remote}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Install a plugin from a ZIP file';
+    protected $description = 'Install a plugin from a ZIP file or from the remote plugin management site';
 
     /**
      * Execute the console command.
      */
     public function handle(PluginManager $pluginManager): int
     {
-        $path = $this->argument('path');
+        $plugin = $this->argument('plugin');
+        $fromRemote = $this->option('from-remote') || $this->option('remote');
 
+        // Determine if this is a remote installation or local file
+        $isRemote = $fromRemote || $this->isRemoteInstallation($plugin);
+
+        if ($isRemote) {
+            return $this->installFromRemote($pluginManager, $plugin);
+        } else {
+            return $this->installFromLocal($pluginManager, $plugin);
+        }
+    }
+
+    /**
+     * Determine if the given argument is for remote installation
+     */
+    protected function isRemoteInstallation(string $plugin): bool
+    {
+        // If it's a file path (contains / or ends in .zip), it's local
+        if (strpos($plugin, '/') !== false || strpos($plugin, '\\') !== false) {
+            return false;
+        }
+
+        if (str_ends_with($plugin, '.zip')) {
+            return false;
+        }
+
+        // If it's a valid file path, it's local
+        if (file_exists($plugin)) {
+            return false;
+        }
+
+        // Otherwise, assume it's a plugin name for remote installation
+        return true;
+    }
+
+    /**
+     * Install plugin from remote management site
+     */
+    protected function installFromRemote(PluginManager $pluginManager, string $pluginName): int
+    {
+        $this->info("Installing plugin from remote: {$pluginName}");
+
+        try {
+            $plugin = $pluginManager->installPluginFromRemote($pluginName);
+
+            $this->info("✓ Plugin installed successfully!");
+            $this->line("  Name: {$plugin->name}");
+            $this->line("  Title: {$plugin->title}");
+            $this->line("  Version: {$plugin->version}");
+
+            if ($this->confirm('Would you like to activate this plugin now?', true)) {
+                $pluginManager->activatePlugin($plugin->name);
+                $this->info("✓ Plugin activated!");
+            }
+
+            return Command::SUCCESS;
+        } catch (\Exception $e) {
+            $this->error("Failed to install plugin: " . $e->getMessage());
+            return Command::FAILURE;
+        }
+    }
+
+    /**
+     * Install plugin from local ZIP file
+     */
+    protected function installFromLocal(PluginManager $pluginManager, string $path): int
+    {
         if (!file_exists($path)) {
             $this->error("ZIP file not found: {$path}");
+            $this->line("");
+            $this->line("Tip: To install from remote, use:");
+            $this->line("  php artisan plugin:install <plugin-name> --from-remote");
             return Command::FAILURE;
         }
 
         $this->info("Installing plugin from: {$path}");
 
-        // Register error handler to catch fatal errors during shutdown
-        register_shutdown_function(function() {
-            $error = error_get_last();
-            if ($error && $error['type'] === E_ERROR) {
-                // If it's a redeclaration error, suppress it since installation succeeded
-                if (strpos($error['message'], 'Cannot redeclare class') !== false && 
-                    strpos($error['message'], 'ServiceProvider') !== false) {
-                    // Installation succeeded, this is just a shutdown error
-                    // Exit cleanly without displaying the error
-                    exit(0);
-                }
-            }
-        });
-
         try {
             $plugin = $pluginManager->installPlugin($path);
 
-            // Store values before any potential class loading
-            $name = $plugin->name;
-            $title = $plugin->title;
-            $version = $plugin->version;
-
             $this->info("✓ Plugin installed successfully!");
-            $this->line("  Name: {$name}");
-            $this->line("  Title: {$title}");
-            $this->line("  Version: {$version}");
+            $this->line("  Name: {$plugin->name}");
+            $this->line("  Title: {$plugin->title}");
+            $this->line("  Version: {$plugin->version}");
 
-            // Exit immediately to prevent any shutdown handlers from loading classes
-            // The plugin is already saved to the database, so we're safe to exit
-            if ($this->option('no-interaction') || !$this->confirm('Would you like to activate this plugin now?', false)) {
-                return Command::SUCCESS;
-            }
-
-            try {
-                $pluginManager->activatePlugin($name);
+            if ($this->confirm('Would you like to activate this plugin now?', true)) {
+                $pluginManager->activatePlugin($plugin->name);
                 $this->info("✓ Plugin activated!");
-            } catch (\Exception $e) {
-                $this->error("Failed to activate plugin: " . $e->getMessage());
-                // Don't fail the entire command if activation fails
             }
 
             return Command::SUCCESS;

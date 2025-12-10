@@ -139,6 +139,87 @@ class PluginManager
     }
 
     /**
+     * Install a plugin from the remote plugin management site
+     *
+     * @param string $nameOrSlug Plugin name or slug
+     * @return Plugin
+     * @throws \Exception
+     */
+    public function installPluginFromRemote(string $nameOrSlug): Plugin
+    {
+        $managementSiteUrl = config('core-services.plugins.management_site_url');
+
+        if (!$managementSiteUrl) {
+            throw new \Exception('Plugin management site URL not configured. Set PLUGIN_MANAGEMENT_SITE_URL in your .env file.');
+        }
+
+        try {
+            // Fetch plugin information from management site
+            $response = Http::timeout(10)->get("{$managementSiteUrl}/api/plugins/{$nameOrSlug}");
+
+            if (!$response->successful()) {
+                if ($response->status() === 404) {
+                    throw new \Exception("Plugin '{$nameOrSlug}' not found on management site");
+                }
+                throw new \Exception("Failed to fetch plugin info from management site: HTTP {$response->status()}");
+            }
+
+            $pluginData = $response->json();
+
+            if (!$pluginData) {
+                throw new \Exception("Invalid response from management site");
+            }
+
+            // Get download URL
+            $downloadUrl = $pluginData['download_url'] ?? null;
+            if (!$downloadUrl) {
+                throw new \Exception("Download URL not available for plugin '{$nameOrSlug}'");
+            }
+
+            // Download the plugin ZIP file
+            $tempZipPath = sys_get_temp_dir() . '/plugin_remote_' . uniqid() . '.zip';
+
+            Log::info("Downloading plugin from: {$downloadUrl}");
+
+            $downloadResponse = Http::timeout(60)->get($downloadUrl);
+
+            if (!$downloadResponse->successful()) {
+                throw new \Exception("Failed to download plugin: HTTP {$downloadResponse->status()}");
+            }
+
+            File::put($tempZipPath, $downloadResponse->body());
+
+            // Verify the downloaded file
+            if (!File::exists($tempZipPath) || File::size($tempZipPath) === 0) {
+                throw new \Exception("Downloaded plugin file is empty or invalid");
+            }
+
+            try {
+                // Install using the existing installPlugin method
+                $plugin = $this->installPlugin($tempZipPath);
+
+                Log::info("Plugin installed successfully from remote", [
+                    'name' => $plugin->name,
+                    'version' => $plugin->version,
+                ]);
+
+                return $plugin;
+            } finally {
+                // Clean up temporary file
+                if (File::exists($tempZipPath)) {
+                    File::delete($tempZipPath);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error("Failed to install plugin from remote: " . $e->getMessage(), [
+                'plugin' => $nameOrSlug,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Install a plugin from a ZIP file
      *
      * @param string $zipPath Path to the ZIP file
@@ -269,15 +350,6 @@ class PluginManager
             // Do NOT load the class or register autoloader during installation
             // This prevents ServiceProvider from being loaded accidentally
             // The class will be loaded properly during activation when autoloader is registered
-            
-            // CRITICAL: Ensure ServiceProvider file is NOT loaded during installation
-            // Check if it exists but do NOT require it
-            $serviceProviderFile = $pluginPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'ServiceProvider.php';
-            if (file_exists($serviceProviderFile)) {
-                // ServiceProvider file exists - this is fine, we just won't load it
-                // But we need to make sure it's not loaded via autoloader
-                // The autoloader will be registered during activation, not installation
-            }
         }
 
         // Save to database
