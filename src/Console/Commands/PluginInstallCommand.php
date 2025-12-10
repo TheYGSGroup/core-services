@@ -39,12 +39,19 @@ class PluginInstallCommand extends Command
             $plugin = $pluginManager->installPlugin($path);
 
             $this->info("✓ Plugin installed successfully!");
-            $this->line("  Name: {$plugin->name}");
-            $this->line("  Title: {$plugin->title}");
-            $this->line("  Version: {$plugin->version}");
+            
+            // Use raw database values to avoid triggering class loading
+            // Access properties directly from the model's attributes array
+            $name = $plugin->getAttribute('name');
+            $title = $plugin->getAttribute('title');
+            $version = $plugin->getAttribute('version');
+            
+            $this->line("  Name: {$name}");
+            $this->line("  Title: {$title}");
+            $this->line("  Version: {$version}");
 
             if ($this->confirm('Would you like to activate this plugin now?', true)) {
-                $pluginManager->activatePlugin($plugin->name);
+                $pluginManager->activatePlugin($name);
                 $this->info("✓ Plugin activated!");
             }
 
