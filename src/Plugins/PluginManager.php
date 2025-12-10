@@ -973,11 +973,6 @@ class PluginManager
                     return;
                 }
                 
-                // IMPORTANT: Skip ServiceProvider here too - it will be loaded explicitly during activation
-                if ($className === 'ServiceProvider') {
-                    return; // Don't autoload ServiceProvider
-                }
-                
                 // Try namespace path (e.g., src/AuthNetPayment/Plugin.php)
                 $file = $srcPath . '/' . str_replace('\\', '/', $class) . '.php';
                 if (file_exists($file)) {
