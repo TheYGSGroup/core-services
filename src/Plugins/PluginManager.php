@@ -904,7 +904,7 @@ class PluginManager
      */
     protected static array $registeredAutoloaders = [];
 
-    protected function registerPluginAutoloader(string $pluginName, string $pluginPath): void
+    public function registerPluginAutoloader(string $pluginName, string $pluginPath): void
     {
         // Prevent duplicate autoloader registration for the same plugin
         $key = $pluginName . ':' . $pluginPath;
