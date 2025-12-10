@@ -138,9 +138,24 @@ class CoreServicesServiceProvider extends ServiceProvider
                         $serviceProvider = $plugin->metadata['service_provider'] ?? null;
                         
                         if ($serviceProvider) {
-                            // Try to register the service provider - Laravel will autoload it if needed
-                            // Only register if class exists and hasn't been registered
-                            if (class_exists($serviceProvider, false)) {
+                            // Try to check if class exists (with autoloading)
+                            // This will trigger the autoloader if the class isn't loaded yet
+                            $classExists = false;
+                            try {
+                                $classExists = class_exists($serviceProvider);
+                            } catch (\Exception $e) {
+                                // If class loading fails due to redeclaration, it means it's already loaded via use statement
+                                // Check if it actually exists in declared classes
+                                $declaredClasses = get_declared_classes();
+                                $classExists = in_array($serviceProvider, $declaredClasses);
+                                \Log::debug("ServiceProvider class loading exception (likely redeclaration): {$e->getMessage()}", [
+                                    'plugin' => $plugin->name,
+                                    'service_provider' => $serviceProvider,
+                                    'in_declared_classes' => $classExists
+                                ]);
+                            }
+                            
+                            if ($classExists) {
                                 $registeredProviders = $this->app->getLoadedProviders();
                                 if (!isset($registeredProviders[$serviceProvider])) {
                                     $this->app->register($serviceProvider);
@@ -149,22 +164,9 @@ class CoreServicesServiceProvider extends ServiceProvider
                                     ]);
                                 }
                             } else {
-                                // Service provider class doesn't exist yet - try to register it anyway
-                                // Laravel will attempt to autoload it, which should work if autoloader is set up correctly
-                                try {
-                                    $registeredProviders = $this->app->getLoadedProviders();
-                                    if (!isset($registeredProviders[$serviceProvider])) {
-                                        $this->app->register($serviceProvider);
-                                        \Log::info("Registered service provider for plugin: {$plugin->name} (autoloaded)", [
-                                            'service_provider' => $serviceProvider
-                                        ]);
-                                    }
-                                } catch (\Exception $e) {
-                                    \Log::warning("Could not register service provider for plugin: {$plugin->name}", [
-                                        'service_provider' => $serviceProvider,
-                                        'error' => $e->getMessage()
-                                    ]);
-                                }
+                                \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
+                                    'service_provider' => $serviceProvider
+                                ]);
                             }
                         }
                     } catch (\Exception $e) {
