@@ -12,7 +12,7 @@ class PluginInstallCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'plugin:install {path : Path to the plugin ZIP file}';
+    protected $signature = 'plugin:install {path : Path to the plugin ZIP file} {--no-interaction : Do not ask for confirmation}';
 
     /**
      * The console command description.
@@ -38,21 +38,28 @@ class PluginInstallCommand extends Command
         try {
             $plugin = $pluginManager->installPlugin($path);
 
+            // Store values before any potential class loading
+            $name = $plugin->name;
+            $title = $plugin->title;
+            $version = $plugin->version;
+
             $this->info("✓ Plugin installed successfully!");
-            
-            // Use raw database values to avoid triggering class loading
-            // Access properties directly from the model's attributes array
-            $name = $plugin->getAttribute('name');
-            $title = $plugin->getAttribute('title');
-            $version = $plugin->getAttribute('version');
-            
             $this->line("  Name: {$name}");
             $this->line("  Title: {$title}");
             $this->line("  Version: {$version}");
 
-            if ($this->confirm('Would you like to activate this plugin now?', true)) {
+            // Exit immediately to prevent any shutdown handlers from loading classes
+            // The plugin is already saved to the database, so we're safe to exit
+            if ($this->option('no-interaction') || !$this->confirm('Would you like to activate this plugin now?', false)) {
+                return Command::SUCCESS;
+            }
+
+            try {
                 $pluginManager->activatePlugin($name);
                 $this->info("✓ Plugin activated!");
+            } catch (\Exception $e) {
+                $this->error("Failed to activate plugin: " . $e->getMessage());
+                // Don't fail the entire command if activation fails
             }
 
             return Command::SUCCESS;
