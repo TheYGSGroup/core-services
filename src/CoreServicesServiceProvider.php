@@ -138,30 +138,39 @@ class CoreServicesServiceProvider extends ServiceProvider
                         $serviceProvider = $plugin->metadata['service_provider'] ?? null;
                         
                         if ($serviceProvider) {
-                            // Try to check if class exists (with autoloading)
-                            // This will trigger the autoloader if the class isn't loaded yet
+                            // Try to register the service provider
+                            // If class doesn't exist yet, class_exists will trigger autoloader
+                            // If redeclaration error occurs, the class is already loaded via use statement
                             $classExists = false;
                             try {
                                 $classExists = class_exists($serviceProvider);
-                            } catch (\Exception $e) {
-                                // If class loading fails due to redeclaration, it means it's already loaded via use statement
-                                // Check if it actually exists in declared classes
+                            } catch (\Throwable $e) {
+                                // If we get a redeclaration error, class is already loaded
+                                // Check declared classes to confirm
                                 $declaredClasses = get_declared_classes();
                                 $classExists = in_array($serviceProvider, $declaredClasses);
-                                \Log::debug("ServiceProvider class loading exception (likely redeclaration): {$e->getMessage()}", [
-                                    'plugin' => $plugin->name,
-                                    'service_provider' => $serviceProvider,
-                                    'in_declared_classes' => $classExists
-                                ]);
+                                if (!$classExists) {
+                                    // Try to get it from the error message or just assume it exists
+                                    // The error "previously declared as local import" means it was loaded
+                                    $classExists = str_contains($e->getMessage(), 'previously declared') || 
+                                                   str_contains($e->getMessage(), 'Cannot redeclare');
+                                }
                             }
                             
                             if ($classExists) {
                                 $registeredProviders = $this->app->getLoadedProviders();
                                 if (!isset($registeredProviders[$serviceProvider])) {
-                                    $this->app->register($serviceProvider);
-                                    \Log::info("Registered service provider for plugin: {$plugin->name}", [
-                                        'service_provider' => $serviceProvider
-                                    ]);
+                                    try {
+                                        $this->app->register($serviceProvider);
+                                        \Log::info("Registered service provider for plugin: {$plugin->name}", [
+                                            'service_provider' => $serviceProvider
+                                        ]);
+                                    } catch (\Throwable $e) {
+                                        \Log::error("Failed to register service provider for plugin: {$plugin->name}", [
+                                            'service_provider' => $serviceProvider,
+                                            'error' => $e->getMessage()
+                                        ]);
+                                    }
                                 }
                             } else {
                                 \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
