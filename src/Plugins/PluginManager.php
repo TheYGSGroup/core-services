@@ -410,7 +410,42 @@ class PluginManager
         // Register autoloader for plugin
         $this->registerPluginAutoloader($name, $plugin->rootPath);
 
-        // Get plugin instance
+        // IMPORTANT: Load ServiceProvider BEFORE getting plugin instance
+        // to prevent autoloader from loading it when Plugin class is instantiated
+        $serviceProvider = $plugin->metadata['service_provider'] ?? null;
+        $serviceProviderFile = null;
+        
+        if ($serviceProvider) {
+            // Check if ServiceProvider is already loaded (via use statement or previous require)
+            if (class_exists($serviceProvider, false)) {
+                // ServiceProvider is already loaded - this is OK, we can proceed
+                // The "previously declared as local import" error means it was loaded via a use statement
+                // We should NOT try to require it again
+                Log::info("ServiceProvider already loaded (via use statement or previous require): {$serviceProvider}", [
+                    'plugin' => $name,
+                ]);
+            } else {
+                // Load ServiceProvider explicitly BEFORE getInstance() to prevent autoloader conflicts
+                $parts = explode('\\', $serviceProvider);
+                $className = array_pop($parts);
+                $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+                
+                if (file_exists($serviceProviderFile)) {
+                    // Double-check it's not already loaded before requiring
+                    if (!class_exists($serviceProvider, false)) {
+                        require_once $serviceProviderFile;
+                    }
+                } else {
+                    // Try alternative path
+                    $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
+                    if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
+                        require_once $serviceProviderFile;
+                    }
+                }
+            }
+        }
+
+        // Get plugin instance (now ServiceProvider is already loaded, so autoloader won't try to load it)
         $instance = $plugin->getInstance();
 
         // Run migrations if migration runner is available
@@ -421,12 +456,15 @@ class PluginManager
 
         // Register service provider if available
         // ServiceProvider was already loaded above (before getInstance())
-        if (isset($serviceProvider) && $serviceProvider && class_exists($serviceProvider, false)) {
+        if ($serviceProvider && class_exists($serviceProvider, false)) {
             $registeredProviders = app()->getLoadedProviders();
             if (!isset($registeredProviders[$serviceProvider])) {
                 app()->register($serviceProvider);
+                Log::info("Registered service provider: {$serviceProvider} for plugin: {$name}");
+            } else {
+                Log::info("Service provider already registered: {$serviceProvider} for plugin: {$name}");
             }
-        } elseif (isset($serviceProvider) && $serviceProvider) {
+        } elseif ($serviceProvider) {
             Log::warning("ServiceProvider class not found after loading: {$serviceProvider}", [
                 'plugin' => $name,
                 'file_exists' => file_exists($serviceProviderFile ?? ''),
@@ -917,6 +955,14 @@ class PluginManager
                                 return; // Class already loaded
                             }
                             
+                            // IMPORTANT: Skip ServiceProvider classes completely
+                            // They will be loaded explicitly during activation
+                            $parts = explode('\\', $class);
+                            $className = array_pop($parts);
+                            if ($className === 'ServiceProvider') {
+                                return; // Don't autoload ServiceProvider
+                            }
+                            
                             if (str_starts_with($class, $namespace)) {
                                 $relativeClass = substr($class, strlen($namespace));
                                 $file = $path . str_replace('\\', '/', $relativeClass) . '.php';
@@ -925,7 +971,7 @@ class PluginManager
                                     require_once $file;
                                 }
                             }
-                        });
+                        }, true, true); // Prepend autoloader to catch classes first
                     }
                 }
             }
@@ -961,6 +1007,11 @@ class PluginManager
                 if (file_exists($file)) {
                     require_once $file;
                     return;
+                }
+                
+                // IMPORTANT: Skip ServiceProvider here too - it will be loaded explicitly during activation
+                if ($className === 'ServiceProvider') {
+                    return; // Don't autoload ServiceProvider
                 }
                 
                 // Try namespace path (e.g., src/AuthNetPayment/Plugin.php)

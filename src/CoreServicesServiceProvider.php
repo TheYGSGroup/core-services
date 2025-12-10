@@ -131,11 +131,28 @@ class CoreServicesServiceProvider extends ServiceProvider
                     }
 
                     // Register service provider if available
-                    // IMPORTANT: Only get instance if plugin is actually active
-                    // Don't call getInstance() for inactive plugins as it may trigger class loading
+                    // IMPORTANT: Get service provider from metadata, NOT from getInstance()
+                    // to avoid triggering class loading that might cause redeclaration errors
                     try {
-                        $instance = $plugin->getInstance();
-                        $serviceProvider = $instance->getServiceProvider();
+                        // Get service provider class name from metadata instead of getInstance()
+                        $serviceProvider = $plugin->metadata['service_provider'] ?? null;
+                        
+                        if ($serviceProvider && !class_exists($serviceProvider, false)) {
+                            // Load ServiceProvider explicitly to prevent autoloader conflicts
+                            $parts = explode('\\', $serviceProvider);
+                            $className = array_pop($parts);
+                            $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+                            
+                            if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
+                                require_once $serviceProviderFile;
+                            } else {
+                                // Try alternative path
+                                $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
+                                if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
+                                    require_once $serviceProviderFile;
+                                }
+                            }
+                        }
                         
                         if ($serviceProvider && class_exists($serviceProvider, false)) {
                             // Only register if class exists and hasn't been registered
@@ -153,7 +170,7 @@ class CoreServicesServiceProvider extends ServiceProvider
                             ]);
                         }
                     } catch (\Exception $e) {
-                        \Log::error("Failed to get plugin instance for {$plugin->name}: " . $e->getMessage());
+                        \Log::error("Failed to register service provider for {$plugin->name}: " . $e->getMessage());
                     }
                 } catch (\Exception $e) {
                     \Log::error("Failed to load plugin {$plugin->name}: " . $e->getMessage(), [
