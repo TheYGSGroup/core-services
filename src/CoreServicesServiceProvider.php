@@ -141,12 +141,11 @@ class CoreServicesServiceProvider extends ServiceProvider
                             // Check if service provider is already registered
                             $registeredProviders = $this->app->getLoadedProviders();
                             if (!isset($registeredProviders[$serviceProvider])) {
+                                // Now that ServiceProviders are fixed (using fully qualified names),
+                                // we can safely try to load and register them
                                 // Check if class is already declared (loaded) without triggering autoloading
-                                // We MUST avoid triggering autoloading as it causes fatal redeclaration errors
                                 $declaredClasses = get_declared_classes();
                                 $alreadyDeclared = in_array($serviceProvider, $declaredClasses);
-                                
-                                // Also check with class_exists using false to avoid autoloading
                                 $existsWithoutAutoload = class_exists($serviceProvider, false);
                                 
                                 if ($alreadyDeclared || $existsWithoutAutoload) {
@@ -163,18 +162,26 @@ class CoreServicesServiceProvider extends ServiceProvider
                                         ]);
                                     }
                                 } else {
-                                    // Class not loaded yet - DO NOT try to load it here as it causes fatal redeclaration errors
-                                    // The ServiceProvider will be loaded later when it's actually needed (lazy loading)
-                                    // For now, we'll skip registration and log a debug message
-                                    // This is safe because Laravel can register service providers at any time during boot
-                                    \Log::debug("Service provider class not yet loaded for plugin: {$plugin->name} - will be loaded on demand", [
-                                        'service_provider' => $serviceProvider,
-                                        'note' => 'Skipping registration to avoid fatal redeclaration error. ServiceProvider will be loaded when needed.'
-                                    ]);
-                                    
-                                    // Note: ServiceProviders can be registered later if needed
-                                    // For now, we'll let them load naturally when Laravel needs them
-                                    // This avoids the fatal error while still allowing plugins to work
+                                    // Class not loaded yet - try to load it via autoloader
+                                    // This is now safe because ServiceProviders use fully qualified names
+                                    try {
+                                        // Trigger autoloading - this should work now
+                                        if (class_exists($serviceProvider)) {
+                                            $this->app->register($serviceProvider);
+                                            \Log::info("Registered service provider for plugin: {$plugin->name} (autoloaded)", [
+                                                'service_provider' => $serviceProvider
+                                            ]);
+                                        } else {
+                                            \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
+                                                'service_provider' => $serviceProvider
+                                            ]);
+                                        }
+                                    } catch (\Throwable $e) {
+                                        \Log::error("Failed to load/register service provider for plugin: {$plugin->name}", [
+                                            'service_provider' => $serviceProvider,
+                                            'error' => $e->getMessage()
+                                        ]);
+                                    }
                                 }
                             }
                         }
