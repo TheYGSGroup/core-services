@@ -138,28 +138,22 @@ class CoreServicesServiceProvider extends ServiceProvider
                         $serviceProvider = $plugin->metadata['service_provider'] ?? null;
                         
                         if ($serviceProvider) {
-                            // Try to register the service provider
-                            // If class doesn't exist yet, class_exists will trigger autoloader
-                            // If redeclaration error occurs, the class is already loaded via use statement
-                            $classExists = false;
-                            try {
-                                $classExists = class_exists($serviceProvider);
-                            } catch (\Throwable $e) {
-                                // If we get a redeclaration error, class is already loaded
-                                // Check declared classes to confirm
-                                $declaredClasses = get_declared_classes();
-                                $classExists = in_array($serviceProvider, $declaredClasses);
+                            // Try to register the service provider directly
+                            // Laravel will attempt to autoload it if needed
+                            // If redeclaration error occurs, suppress it and check declared classes
+                            $registeredProviders = $this->app->getLoadedProviders();
+                            if (!isset($registeredProviders[$serviceProvider])) {
+                                // Use @ to suppress fatal errors during class_exists check
+                                // If class_exists fails due to redeclaration, check declared classes
+                                $classExists = @class_exists($serviceProvider);
+                                
                                 if (!$classExists) {
-                                    // Try to get it from the error message or just assume it exists
-                                    // The error "previously declared as local import" means it was loaded
-                                    $classExists = str_contains($e->getMessage(), 'previously declared') || 
-                                                   str_contains($e->getMessage(), 'Cannot redeclare');
+                                    // Check if class exists in declared classes (might have been loaded via use statement)
+                                    $declaredClasses = get_declared_classes();
+                                    $classExists = in_array($serviceProvider, $declaredClasses);
                                 }
-                            }
-                            
-                            if ($classExists) {
-                                $registeredProviders = $this->app->getLoadedProviders();
-                                if (!isset($registeredProviders[$serviceProvider])) {
+                                
+                                if ($classExists) {
                                     try {
                                         $this->app->register($serviceProvider);
                                         \Log::info("Registered service provider for plugin: {$plugin->name}", [
@@ -171,11 +165,11 @@ class CoreServicesServiceProvider extends ServiceProvider
                                             'error' => $e->getMessage()
                                         ]);
                                     }
+                                } else {
+                                    \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
+                                        'service_provider' => $serviceProvider
+                                    ]);
                                 }
-                            } else {
-                                \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
-                                    'service_provider' => $serviceProvider
-                                ]);
                             }
                         }
                     } catch (\Exception $e) {
