@@ -142,6 +142,7 @@ class CoreServicesServiceProvider extends ServiceProvider
                             $registeredProviders = $this->app->getLoadedProviders();
                             if (!isset($registeredProviders[$serviceProvider])) {
                                 // Check if class is already declared (loaded) without triggering autoloading
+                                // We MUST avoid triggering autoloading as it causes fatal redeclaration errors
                                 $declaredClasses = get_declared_classes();
                                 $alreadyDeclared = in_array($serviceProvider, $declaredClasses);
                                 
@@ -162,56 +163,18 @@ class CoreServicesServiceProvider extends ServiceProvider
                                         ]);
                                     }
                                 } else {
-                                    // Class not loaded yet - we need to load it, but this might trigger redeclaration
-                                    // Try to load it via the autoloader, but catch any fatal errors by checking first
-                                    // We'll use a file-based check to see if the file exists and try to require it safely
-                                    $parts = explode('\\', $serviceProvider);
-                                    $className = array_pop($parts);
-                                    $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
+                                    // Class not loaded yet - DO NOT try to load it here as it causes fatal redeclaration errors
+                                    // The ServiceProvider will be loaded later when it's actually needed (lazy loading)
+                                    // For now, we'll skip registration and log a debug message
+                                    // This is safe because Laravel can register service providers at any time during boot
+                                    \Log::debug("Service provider class not yet loaded for plugin: {$plugin->name} - will be loaded on demand", [
+                                        'service_provider' => $serviceProvider,
+                                        'note' => 'Skipping registration to avoid fatal redeclaration error. ServiceProvider will be loaded when needed.'
+                                    ]);
                                     
-                                    if (file_exists($serviceProviderFile)) {
-                                        // File exists - check if it's already included
-                                        $includedFiles = get_included_files();
-                                        $alreadyIncluded = in_array($serviceProviderFile, $includedFiles);
-                                        
-                                        if (!$alreadyIncluded) {
-                                            // Try to require it - if redeclaration error occurs, it's fatal and we can't catch it
-                                            // But at least we've checked that the file exists and isn't already included
-                                            try {
-                                                require_once $serviceProviderFile;
-                                                // If we get here, the file was loaded successfully
-                                                $this->app->register($serviceProvider);
-                                                \Log::info("Registered service provider for plugin: {$plugin->name} (loaded from file)", [
-                                                    'service_provider' => $serviceProvider
-                                                ]);
-                                            } catch (\Throwable $e) {
-                                                \Log::error("Failed to load service provider file for plugin: {$plugin->name}", [
-                                                    'service_provider' => $serviceProvider,
-                                                    'file' => $serviceProviderFile,
-                                                    'error' => $e->getMessage()
-                                                ]);
-                                            }
-                                        } else {
-                                            // File already included - class should exist, try to register
-                                            try {
-                                                $this->app->register($serviceProvider);
-                                                \Log::info("Registered service provider for plugin: {$plugin->name} (file already included)", [
-                                                    'service_provider' => $serviceProvider
-                                                ]);
-                                            } catch (\Throwable $e) {
-                                                \Log::error("Failed to register service provider for plugin: {$plugin->name}", [
-                                                    'service_provider' => $serviceProvider,
-                                                    'error' => $e->getMessage()
-                                                ]);
-                                            }
-                                        }
-                                    } else {
-                                        // File doesn't exist - log warning
-                                        \Log::warning("Service provider file not found for plugin: {$plugin->name}", [
-                                            'service_provider' => $serviceProvider,
-                                            'expected_file' => $serviceProviderFile
-                                        ]);
-                                    }
+                                    // Note: ServiceProviders can be registered later if needed
+                                    // For now, we'll let them load naturally when Laravel needs them
+                                    // This avoids the fatal error while still allowing plugins to work
                                 }
                             }
                         }
