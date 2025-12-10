@@ -424,20 +424,31 @@ class PluginManager
         }
 
         // Register service provider if available
-        // ServiceProvider was already loaded above (before getInstance())
-        if ($serviceProvider && class_exists($serviceProvider, false)) {
-            $registeredProviders = app()->getLoadedProviders();
-            if (!isset($registeredProviders[$serviceProvider])) {
-                app()->register($serviceProvider);
-                Log::info("Registered service provider: {$serviceProvider} for plugin: {$name}");
+        // Get service provider class name from metadata (not from getInstance() to avoid loading)
+        $serviceProvider = $plugin->metadata['service_provider'] ?? null;
+        
+        if ($serviceProvider) {
+            // Check if class is already declared (loaded) without triggering autoloading
+            $declaredClasses = get_declared_classes();
+            $alreadyDeclared = in_array($serviceProvider, $declaredClasses);
+            $existsWithoutAutoload = class_exists($serviceProvider, false);
+            
+            if ($alreadyDeclared || $existsWithoutAutoload) {
+                // Class is already loaded - safe to register
+                $registeredProviders = app()->getLoadedProviders();
+                if (!isset($registeredProviders[$serviceProvider])) {
+                    app()->register($serviceProvider);
+                    Log::info("Registered service provider: {$serviceProvider} for plugin: {$name}");
+                } else {
+                    Log::info("Service provider already registered: {$serviceProvider} for plugin: {$name}");
+                }
             } else {
-                Log::info("Service provider already registered: {$serviceProvider} for plugin: {$name}");
+                // Class not loaded yet - skip registration to avoid fatal redeclaration error
+                // It will be registered during app boot if it gets loaded
+                Log::debug("Service provider class not yet loaded for plugin: {$name} - will be registered during boot if loaded", [
+                    'service_provider' => $serviceProvider
+                ]);
             }
-        } elseif ($serviceProvider) {
-            Log::warning("ServiceProvider class not found after loading: {$serviceProvider}", [
-                'plugin' => $name,
-                'file_exists' => file_exists($serviceProviderFile ?? ''),
-            ]);
         }
 
         // Call activation hook
