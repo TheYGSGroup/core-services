@@ -410,43 +410,12 @@ class PluginManager
         // Register autoloader for plugin
         $this->registerPluginAutoloader($name, $plugin->rootPath);
 
-        // IMPORTANT: Load ServiceProvider BEFORE getting plugin instance
-        // to prevent autoloader from loading it when Plugin class is instantiated
-        $serviceProvider = $plugin->metadata['service_provider'] ?? null;
-        $serviceProviderFile = null;
-        
-        if ($serviceProvider) {
-            // Check if ServiceProvider is already loaded (via use statement or previous require)
-            if (class_exists($serviceProvider, false)) {
-                // ServiceProvider is already loaded - this is OK, we can proceed
-                // The "previously declared as local import" error means it was loaded via a use statement
-                // We should NOT try to require it again
-                Log::info("ServiceProvider already loaded (via use statement or previous require): {$serviceProvider}", [
-                    'plugin' => $name,
-                ]);
-            } else {
-                // Load ServiceProvider explicitly BEFORE getInstance() to prevent autoloader conflicts
-                $parts = explode('\\', $serviceProvider);
-                $className = array_pop($parts);
-                $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
-                
-                if (file_exists($serviceProviderFile)) {
-                    // Double-check it's not already loaded before requiring
-                    if (!class_exists($serviceProvider, false)) {
-                        require_once $serviceProviderFile;
-                    }
-                } else {
-                    // Try alternative path
-                    $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
-                    if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
-                        require_once $serviceProviderFile;
-                    }
-                }
-            }
-        }
-
-        // Get plugin instance (now ServiceProvider is already loaded, so autoloader won't try to load it)
+        // Get plugin instance first
+        // We'll handle ServiceProvider registration after getInstance() to avoid conflicts
         $instance = $plugin->getInstance();
+        
+        // Get service provider class name from metadata (not from getInstance() to avoid loading)
+        $serviceProvider = $plugin->metadata['service_provider'] ?? null;
 
         // Run migrations if migration runner is available
         if (class_exists(\Ygs\CoreServices\Plugins\MigrationRunner::class)) {
