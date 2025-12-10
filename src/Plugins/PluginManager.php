@@ -420,39 +420,17 @@ class PluginManager
         }
 
         // Register service provider if available
-        $serviceProvider = $instance->getServiceProvider();
-        if ($serviceProvider) {
-            // Check if class exists (without autoloading to avoid triggering redeclaration)
-            $classExists = class_exists($serviceProvider, false);
-            
-            // If class doesn't exist yet, load it explicitly from the plugin directory
-            if (!$classExists) {
-                // Load ServiceProvider explicitly from the plugin's src directory
-                $parts = explode('\\', $serviceProvider);
-                $className = array_pop($parts);
-                $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . $className . '.php';
-                
-                if (file_exists($serviceProviderFile)) {
-                    // Check again before requiring to avoid redeclaration
-                    if (!class_exists($serviceProvider, false)) {
-                        require_once $serviceProviderFile;
-                    }
-                } else {
-                    // Try alternative path
-                    $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . $className . '.php';
-                    if (file_exists($serviceProviderFile) && !class_exists($serviceProvider, false)) {
-                        require_once $serviceProviderFile;
-                    }
-                }
+        // ServiceProvider was already loaded above (before getInstance())
+        if (isset($serviceProvider) && $serviceProvider && class_exists($serviceProvider, false)) {
+            $registeredProviders = app()->getLoadedProviders();
+            if (!isset($registeredProviders[$serviceProvider])) {
+                app()->register($serviceProvider);
             }
-            
-            // Now check if it exists and register if not already registered
-            if (class_exists($serviceProvider)) {
-                $registeredProviders = app()->getLoadedProviders();
-                if (!isset($registeredProviders[$serviceProvider])) {
-                    app()->register($serviceProvider);
-                }
-            }
+        } elseif (isset($serviceProvider) && $serviceProvider) {
+            Log::warning("ServiceProvider class not found after loading: {$serviceProvider}", [
+                'plugin' => $name,
+                'file_exists' => file_exists($serviceProviderFile ?? ''),
+            ]);
         }
 
         // Call activation hook
@@ -970,17 +948,11 @@ class PluginManager
                 
                 // IMPORTANT: Skip ServiceProvider completely during autoloading
                 // It will be loaded explicitly during activation to avoid redeclaration errors
-                // Check if this is a ServiceProvider class in the plugin's namespace
+                // Check if this is a ServiceProvider class - skip ALL ServiceProvider classes
+                // to prevent redeclaration errors
                 if ($className === 'ServiceProvider') {
-                    // Extract namespace prefix to check if it matches the plugin
-                    $namespacePrefix = implode('\\', array_slice($parts, 0, -1));
-                    // Convert plugin name to namespace (e.g., "authnet-payment" -> "AuthNetPayment")
-                    $pluginNamespace = str_replace(' ', '', ucwords(str_replace('-', ' ', $pluginName)));
-                    
-                    // If the class namespace matches the plugin namespace, skip it
-                    if (str_contains($class, $pluginNamespace) || str_contains($class, str_replace('-', '', $pluginName))) {
-                        return; // Don't autoload ServiceProvider
-                    }
+                    // Skip all ServiceProvider classes - they'll be loaded explicitly during activation
+                    return; // Don't autoload ServiceProvider
                 }
                 
                 // Try direct class name first (e.g., src/Plugin.php for AuthNetPayment\Plugin)
