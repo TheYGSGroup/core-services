@@ -142,7 +142,7 @@ class Plugin
             if (!class_exists($this->mainClass, false)) {
                 // Class not loaded - try to trigger autoloading
                 // This will work if autoloader is registered
-                if (!class_exists($this->mainClass)) {
+            if (!class_exists($this->mainClass)) {
                     throw new \Exception("Plugin class {$this->mainClass} not found. Make sure the plugin autoloader is registered.");
                 }
             }

@@ -151,33 +151,61 @@ class CoreServicesServiceProvider extends ServiceProvider
                                 if ($alreadyDeclared || $existsWithoutAutoload) {
                                     // Class is already loaded - safe to register
                                     try {
-                                        $this->app->register($serviceProvider);
-                                        \Log::info("Registered service provider for plugin: {$plugin->name}", [
-                                            'service_provider' => $serviceProvider
-                                        ]);
+                                $this->app->register($serviceProvider);
+                                \Log::info("Registered service provider for plugin: {$plugin->name}", [
+                                    'service_provider' => $serviceProvider
+                                ]);
                                     } catch (\Throwable $e) {
                                         \Log::error("Failed to register service provider for plugin: {$plugin->name}", [
                                             'service_provider' => $serviceProvider,
                                             'error' => $e->getMessage()
                                         ]);
-                                    }
-                                } else {
-                                    // Class not loaded yet - try to load it via autoloader
-                                    // This is now safe because ServiceProviders use fully qualified names
+                            }
+                        } else {
+                                    // Class not loaded yet - try to load it directly from file
+                                    // This ensures service providers are loaded even if autoloader hasn't picked them up
                                     try {
-                                        // Trigger autoloading - this should work now
-                                        if (class_exists($serviceProvider)) {
-                                            $this->app->register($serviceProvider);
-                                            \Log::info("Registered service provider for plugin: {$plugin->name} (autoloaded)", [
-                                                'service_provider' => $serviceProvider
-                                            ]);
+                                        // Try to find and require the service provider file directly
+                                        $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'ServiceProvider.php';
+                                        
+                                        if (file_exists($serviceProviderFile)) {
+                                            // Require the file to load the class
+                                            require_once $serviceProviderFile;
+                                            
+                                            // Now try to register it
+                                            if (class_exists($serviceProvider, false)) {
+                                                $this->app->register($serviceProvider);
+                                                \Log::info("Registered service provider for plugin: {$plugin->name} (loaded from file)", [
+                                                    'service_provider' => $serviceProvider,
+                                                    'file' => $serviceProviderFile
+                                                ]);
+                                            } else {
+                                                \Log::warning("Service provider class not found after loading file for plugin: {$plugin->name}", [
+                                                    'service_provider' => $serviceProvider,
+                                                    'file' => $serviceProviderFile
+                                                ]);
+                                            }
                                         } else {
-                                            \Log::warning("Service provider class not found for plugin: {$plugin->name}", [
-                                                'service_provider' => $serviceProvider
-                                            ]);
+                                            // Try alternative path
+                                            $serviceProviderFile = $plugin->rootPath . DIRECTORY_SEPARATOR . 'ServiceProvider.php';
+                                            if (file_exists($serviceProviderFile)) {
+                                                require_once $serviceProviderFile;
+                                                if (class_exists($serviceProvider, false)) {
+                                                    $this->app->register($serviceProvider);
+                                                    \Log::info("Registered service provider for plugin: {$plugin->name} (loaded from alternative path)", [
+                                                        'service_provider' => $serviceProvider,
+                                                        'file' => $serviceProviderFile
+                                                    ]);
+                                                }
+                                            } else {
+                                                \Log::warning("Service provider file not found for plugin: {$plugin->name}", [
+                                                    'service_provider' => $serviceProvider,
+                                                    'expected_path' => $plugin->rootPath . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'ServiceProvider.php'
+                                                ]);
+                                            }
                                         }
                                     } catch (\Throwable $e) {
-                                        \Log::error("Failed to load/register service provider for plugin: {$plugin->name}", [
+                                        \Log::error("Failed to load service provider for plugin: {$plugin->name}", [
                                             'service_provider' => $serviceProvider,
                                             'error' => $e->getMessage()
                                         ]);
